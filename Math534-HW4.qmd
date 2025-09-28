@@ -1,0 +1,310 @@
+---
+title: "Math 534"
+author: "Pan"
+format:
+  gfm: default
+editor: visual
+---
+
+## Q2
+
+1 Point
+
+Grading comment:
+
+How many rows are available in the Measurements table of the Smith College Wideband Auditory Immittance database?
+
+```{r}
+library(RMariaDB)
+library(dplyr)
+```
+
+```{r}
+con <- dbConnect(
+  MariaDB(), host = "scidb.smith.edu",
+  user = "waiuser", password = "smith_waiDB", 
+  dbname = "wai"
+)
+Measurements <- tbl(con, "Measurements")
+Measurements %>% count()
+```
+
+The Measurements table contains 5052304 rows.
+
+## Q3
+
+1 Point
+
+Grading comment:
+
+Identify what years of data are available in the flights table of the airlines database.
+
+```{r}
+library(tidyverse) 
+library(mdsr) 
+library(RMariaDB) 
+con <- dbConnect_scidb("airlines")
+```
+
+```{r}
+flights <- tbl(con, "flights")
+flights %>% head(10)
+```
+
+```{r}
+years_available <- tbl(con, "flights") %>%   
+  distinct(year) %>%                           
+  arrange(year) %>%                           
+  collect()                                    
+
+years_available
+```
+
+The flights table contains data for the years 2013-2015.
+
+## Q4
+
+5 Points
+
+Grading comment:
+
+Use the `dbConnect_scidb` function to connect to the airlines database to answer the following problem.
+
+### Q4.1
+
+1 Point
+
+Grading comment:
+
+How many domestic flights flew into Dallas-Fort Worth (DFW) on May 14, 2015?
+
+```{r}
+ans <- tbl(con, "flights") %>% 
+  filter(year == 2015,
+         month == 5,
+         day == 14,
+         dest == "DFW") %>% 
+  summarise(n = n()) %>%        
+  collect()
+ans
+```
+
+On May 14, 2015, 737 domestic flights arrived at Dallas-Fort Worth (DFW).
+
+### Q4.2
+
+1 Point
+
+Grading comment:
+
+Of all the destinations from Chicago O’Hare (ORD), which were the most common in 2015?
+
+```{r}
+con <- dbConnect_scidb("airlines")
+
+top_dest <- tbl(con, "flights") %>% 
+  filter(year == 2015, origin == "ORD") %>%   
+  group_by(dest) %>%                          
+  tally(sort = TRUE) %>%                      
+  head(10) %>%                                
+  collect()
+
+top_dest
+```
+
+### Q4.3
+
+1 Point
+
+Grading comment:
+
+Which airport had the highest average arrival delay time in 2015?
+
+```{r}
+con <- dbConnect_scidb("airlines")
+worst_airport <- tbl(con, "flights") %>% 
+  filter(year == 2015, !is.na(arr_delay)) %>%   # 只看 2015 有延误记录的航班
+  group_by(dest) %>%                            # 按目的地机场分组
+  summarise(avg_arr_delay = mean(arr_delay)) %>% 
+  arrange(desc(avg_arr_delay)) %>%              # 平均延误最大排最前
+  head(1) %>% 
+  collect()
+
+worst_airport
+```
+
+In 2015, STC had the highest average arrival delay at 21.6 minutes.
+
+### Q4.4
+
+1 Point
+
+Grading comment:
+
+How many domestic flights came into or flew out of Bradley Airport (BDL) in 2015?
+
+```{r}
+con <- dbConnect_scidb("airlines")
+bdl_2015 <- tbl(con, "flights") %>% 
+  filter(year == 2015,
+         (origin == "BDL" | dest == "BDL"),          
+        !dest %in% c("SJU", "STT", "STX")) %>%     
+  tally() %>% 
+  collect()
+
+bdl_2015
+```
+
+In 2015, 40538 domestic flights either departed from or arrived at Bradley Airport (BDL).
+
+### Q4.5
+
+1 Point
+
+Grading comment:
+
+List the airline and flight number for all flights between LAX and JFK on September 26th, 2015.
+
+```{r}
+con <- dbConnect_scidb("airlines")
+
+lax_jfk_0926 <- tbl(con, "flights") %>% 
+  filter(year == 2015,
+         month == 9,
+         day == 26,
+         ((origin == "LAX" & dest == "JFK") |
+          (origin == "JFK" & dest == "LAX"))) %>% 
+  distinct(carrier, flight) %>%       
+  arrange(carrier, flight) %>% 
+  mutate(flight_no = str_c(carrier, flight)) %>% 
+  collect()
+
+lax_jfk_0926
+```
+
+## Q5
+
+1 Point
+
+Grading comment:
+
+Wideband acoustic immittance (WAI) is an area of biomedical research that strives to develop WAI measurements as noninvasive auditory diagnostic tools. WAI measurements are reported in many related formats, including absorbance, admittance, impedance, power reflectance, and pressure reflectance. More information can be found about this public facing WAI database at <http://www.science.smith.edu/wai-database/home/about>.
+
+```         
+library(RMariaDB) db <- dbConnect(   MariaDB(),    user = "waiuser",    password = "smith_waiDB",    host = "scidb.smith.edu",    dbname = "wai" )
+```
+
+a\. How many female subjects are there in total across all studies?
+
+```{r}
+library(tidyverse)
+library(RMariaDB)
+```
+
+```{r}
+db <- dbConnect(
+  MariaDB(), 
+  user = "waiuser", 
+  password = "smith_waiDB", 
+  host = "scidb.smith.edu", 
+  dbname = "wai"
+)
+dbListTables(db)
+```
+
+```{r}
+dbGetQuery(db, "DESCRIBE Subjects")[, "Field"]
+tbl(db, "Subjects") %>% 
+  count(Sex) %>% 
+  collect()
+```
+
+```{r}
+n_female <- tbl(db, "Subjects") %>% 
+  filter(Sex %in% c("Female", "Femake")) %>%   
+  tally() %>% 
+  collect()
+n_female
+```
+
+Across all studies, the WAI database contains 4728 female subjects (including one record with a typo “Femake”).
+
+b\. Find the average absorbance for participants for each study, ordered by highest to lowest value.
+
+```{r}
+db <- dbConnect(
+  MariaDB(), 
+  user = "waiuser", 
+  password = "smith_waiDB", 
+  host = "scidb.smith.edu", 
+  dbname = "wai"
+)
+dbGetQuery(db, "DESCRIBE Measurements")[, "Field"]
+dbGetQuery(db, "DESCRIBE Subjects")[, "Field"]
+```
+
+```{r}
+subj <- tbl(db, "Subjects") %>% select(SubjectNumber, Identifier) %>% collect()
+meas <- tbl(db, "Measurements") %>% select(SubjectNumber, Absorbance) %>% collect()
+avg_abs_by_study <-
+  meas %>% 
+  inner_join(
+    subj,
+    by = "SubjectNumber",
+    relationship = "many-to-many"   
+  ) %>% 
+  group_by(Identifier) %>%          
+  summarise(
+    n_measurements = n(),
+    avg_abs        = mean(Absorbance, na.rm = TRUE)
+  ) %>% 
+  arrange(desc(avg_abs))
+
+avg_abs_by_study
+
+```
+
+c\. Write a query to count all the measurements with a calculated absorbance of less than 0.
+
+```{r}
+n_neg <- tbl(db, "Measurements") %>% 
+  filter(Absorbance < 0) %>% 
+  tally() %>% 
+  collect()
+
+n_neg
+```
+
+A total of 28694 measurements in the database have a calculated absorbance less than zero.
+
+## Q6
+
+1 Point
+
+Grading comment:
+
+The following open-ended question may require more than one query and a thoughtful response. Based on data from 2013 only, and assuming that transportation to the airport is not an issue, would you rather fly out of JFK, LaGuardia (LGA), or Newark (EWR)? Why or why not? Use the dbConnect_scidb function to connect to the airlines database.
+
+```{r}
+con <- dbConnect_scidb("airlines")
+summary_2013 <- tbl(con, "flights") %>% 
+  filter(year == 2013, origin %in% c("JFK", "LGA", "EWR")) %>% 
+  mutate(
+    on_time = dep_delay <= 15,               
+    cancelled = is.na(dep_delay) & is.na(arr_delay)  
+  ) %>% 
+  group_by(origin) %>% 
+  summarise(
+    n_flights   = n(),
+    avg_delay   = mean(dep_delay, na.rm = TRUE),
+    cancel_rate = mean(cancelled, na.rm = TRUE),
+    on_time_rate = mean(on_time, na.rm = TRUE)
+  ) %>% 
+  arrange(avg_delay) %>%   
+  collect()
+
+summary_2013
+```
+
+In 2013, LGA had the lowest average departure delay (10 min), the lowest cancellation rate (0), and the highest on-time rate (81.6 %).\
+Therefore, I would choose to fly on LGA in 2013, assuming ground transportation is equally convenient.
