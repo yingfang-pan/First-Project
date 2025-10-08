@@ -1,0 +1,160 @@
+---
+title: "Re-evaluating Growth in the Time of Debt"
+subtitle: "[DSLC stages]: Data cleaning and pre-processing"
+format: 
+  html:
+    css: theme.css
+    toc: true
+    toc-location: right
+    number-depth: 4
+    theme: cerulean
+    df-print: kable
+execute:
+  echo: true
+editor: source
+number-sections: true
+embed-resources: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Domain problem formulation
+
+The goal of this project is to reproduce the analysis of Reinhart and Rogoff (2010) using IMF public debt data and World Bank GDP growth data. We aim to investigate whether high levels of debt are associated with lower economic growth across countries.
+
+## Data source overview
+
+debt.xls: International Monetary Fund (IMF) dataset of government debt as a percentage of GDP (1800–2015, 189 countries). growth.csv: World Bank dataset of annual GDP growth rates (1960–2021, 266 countries).
+
+## Step 1: Review background information {#sec-bg-info}
+
+The IMF debt dataset contains historical estimates of government debt as a percentage of GDP for 189 countries from 1800 to 2015. The World Bank growth dataset contains annual GDP growth rates from 1960 to 2021.
+
+### Data dictionary
+
+Variables of IMF Debt dataset: country(country name), year(year of observation), debt_pct_gdp(public debt as % of GDP)
+
+Variables of world bank growth dataset: country(country name), year(year of observation), growth_pct_gdp(annual GDP growth rate)
+
+## Step 2: Loading in the data
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(readr)
+library(dplyr)
+```
+
+```{r}
+debt <- read_excel("C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/debt.xls")
+growth <- read_csv("C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/growth.csv")
+
+head(debt)
+head(growth)
+```
+
+## Step 3: Examine the data and create action items
+
+### Finding invalid values
+```{r}
+colSums(is.na(debt))
+
+growth <- read_csv("C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/growth.csv", skip = 4, show_col_types = FALSE) 
+colSums(is.na(growth))
+```
+
+### Assessing Column names
+```{r}
+names(debt)
+
+growth <- read_csv("C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/growth.csv", skip = 4)
+names(growth)
+names(growth)
+```
+
+### Assessing variable type
+```{r}
+str(debt)
+str(growth)
+```
+
+### Assessing data completeness
+The IMF debt dataset shows substantial missing data before 1960.
+The World Bank growth dataset is largely complete after 1960, with only a few missing observations for certain countries and years.
+
+## Step 4: Clean and pre-process the data
+b.To implement step 4 of the data cleaning process, write a separate cleaning function for each dataset. Your debt-cleaning function should create a clean debt dataset whose rows for Australia from 1960–1969 look like the left table below, and your growth-cleaning function should create a clean growth dataset whose rows for Australia from 1960–1969 look like the right table below
+
+```{r}
+clean_debt <- function(file = "C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/debt.xls") {
+  read_excel(file) %>%
+    rename(country = 1) %>%
+    pivot_longer(
+      cols = -country,
+      names_to  = "year",
+      values_to = "debt_pct_gdp"
+    ) %>%
+    mutate(
+      year = suppressWarnings(as.integer(year)),
+      debt_pct_gdp = parse_number(as.character(debt_pct_gdp))
+    ) %>%
+    filter(!is.na(year), year >= 1960) %>%
+    arrange(country, year)
+}
+
+debt_data   <- clean_debt("C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/debt.xls")
+debt_data   %>% filter(country == "Australia", between(year, 1960, 1969))
+```
+
+
+```{r}
+clean_growth <- function(file = "C:/Users/ypan1/OneDrive/Desktop/534/first_project/Q4/growth.csv") {
+  df <-read_csv(file, skip = 4, show_col_types = FALSE)
+  first_col <- names(df)[1]
+  df %>%
+    rename(country = !!sym(first_col)) %>%
+  select(country, matches("^[0-9]{4}$")) %>%
+  select(-matches("^\\.\\.\\d+$")) %>% 
+  pivot_longer(
+      cols = -country,
+      names_to  = "year",
+      values_to = "growth_pct_gdp"
+    ) %>%
+    mutate(
+      year = as.integer(year),
+      growth_pct_gdp = suppressWarnings(as.numeric(growth_pct_gdp))
+    ) %>%
+    filter(year >= 1960) %>%
+    arrange(country, year) %>%
+    
+    select(country, year, growth_pct_gdp)
+}
+
+growth_data <- clean_growth()
+growth_data %>% filter(country == "Australia", dplyr::between(year, 1960, 1969))
+```
+
+c. Write a pre-processing function that takes as its input the two clean datasets and then joins them together by country and year. The rows for Australia from 1960–1969 in your single combined dataset should look like the following table. Note that the country names are not identical across each dataset, so you will need to decide how to handle country names that do not match (e.g., you might want to manually modify those that are spelled differently and remove those that are not actual countries - by "manually" we meant hard code the changes into the document instead of editing directly).
+
+```{r}
+combine_one_country <- function(debt_tbl, growth_tbl, country = "Australia",
+                                start_year = 1960, end_year = 1969) {
+  debt_tbl %>%
+    filter(country == !!country, between(year, start_year, end_year)) %>%
+    select(country, year, debt_pct_gdp) %>%
+    inner_join(
+      growth_tbl %>%
+        filter(country == !!country, between(year, start_year, end_year)) %>%
+        select(country, year, growth_pct_gdp),
+      by = c("country","year")
+    ) %>%
+    arrange(year)
+}
+
+aus_combined <- combine_one_country(debt_data, growth_data, "Australia", 1960, 1969)
+aus_combined
+```
+
+
+
+
